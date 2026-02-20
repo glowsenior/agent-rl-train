@@ -105,7 +105,7 @@ Step rewards are clamped to [-0.1, +0.1]. Final rewards are added unclamped:
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
 | OS | Ubuntu 20.04+ | Ubuntu 22.04 LTS |
-| GPU | 20GB VRAM (Qwen3-4B) | H200/A100 80GB |
+| GPU | 24GB VRAM (RTX 4090) | H200 140GB / H100 80GB |
 | RAM | 32GB | 64GB+ |
 | Disk | 100GB free | 200GB+ (for Docker images + checkpoints) |
 | Docker | 24.0+ | Latest |
@@ -140,7 +140,7 @@ nvidia-smi
 ### Step 3: Docker + NVIDIA Container Toolkit
 
 ```bash
-# Install Docker
+# Install Docker (skip if already installed)
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 newgrp docker
@@ -159,17 +159,35 @@ sudo systemctl restart docker
 docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
 ```
 
+> **If the GPG key file already exists**, the command will prompt to overwrite. Type `y` to confirm.
+
+> **If you get `unsupported shim version (3)` error**, your containerd is too old.
+> Fix it:
+> ```bash
+> # Option A: Update containerd
+> sudo apt install -y containerd.io
+> sudo systemctl restart containerd
+> sudo systemctl restart docker
+>
+> # Option B: Force shim v2 in Docker config
+> sudo sed -i 's/io.containerd.runc.v3/io.containerd.runc.v2/g' /etc/docker/daemon.json
+> sudo systemctl restart docker
+> ```
+> Then retry the `docker run --gpus all` command.
+
 ### Step 4: Clone and Install
 
 ```bash
-# Clone the project (adjust URL to your repo)
-git clone <your-repo-url> ~/rl
-cd ~/rl
+# Clone the repo
+git clone https://github.com/<your-username>/agent-rl-train.git ~/agent-rl-train
+cd ~/agent-rl-train
+
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
 # Install affinetes first (required dependency)
 cd affinetes
-python3 -m venv .venv
-source .venv/bin/activate
 pip install -e .
 cd ..
 
@@ -178,7 +196,7 @@ cd terminal
 pip install -r requirements.txt
 ```
 
-> **Note on ART**: If `openpipe-art` installation fails (it may require specific PyTorch/CUDA builds), the trainer will automatically fall back to TRL. You can skip it initially:
+> **Note on ART**: If `openpipe-art` fails to install (it may need specific PyTorch/CUDA builds), the trainer falls back to TRL automatically. You can skip it:
 > ```bash
 > pip install -r requirements.txt 2>&1 | grep -v "openpipe-art" || true
 > pip install "openpipe-art[backend]" || echo "ART not available, will use TRL fallback"
@@ -209,7 +227,7 @@ set -a; source .env; set +a
 ### Step 6: Build the SWE-SYNTH Docker Image
 
 ```bash
-cd ~/rl/affinetes
+cd ~/agent-rl-train/affinetes
 afs build environments/SWE-SYNTH --tag swe-synth:latest
 ```
 
@@ -222,7 +240,7 @@ python -m affinetes.cli.main build environments/SWE-SYNTH --tag swe-synth:latest
 ### Step 7: Verify Setup
 
 ```bash
-cd ~/rl/terminal
+cd ~/agent-rl-train/terminal
 python scripts/test_setup.py
 ```
 
@@ -269,7 +287,7 @@ Testing model loading...
 ### Online Only (No Pre-Existing Data)
 
 ```bash
-cd ~/rl/terminal
+cd ~/agent-rl-train/terminal
 
 python train.py \
   --env-type swe-synth \
@@ -329,6 +347,8 @@ Options:
   --offline-data PATH        Path to offline samples JSON/JSONL
   --offline-steps N          Offline training steps (default: 500)
   --online-steps N           Online training steps (default: 2000)
+  --max-model-len N          vLLM KV cache max seq len (default: 32768)
+  --gpu-memory-utilization F vLLM GPU memory fraction (default: 0.9)
   --wandb-project NAME       Enable WandB logging
   --seed N                   Random seed (default: 42)
 ```
@@ -454,7 +474,8 @@ Key hyperparameters (see `configs/training_config.yaml` for full reference):
 | GRPO generations | 16 | Samples per prompt |
 | Temperature | 0.7 | Sampling diversity |
 | Max tokens | 4096 | Per response |
-| vLLM GPU utilization | 0.6 | For inference during rollouts |
+| vLLM GPU utilization | 0.9 | For inference during rollouts |
+| Max model len | 32768 | vLLM KV cache context window |
 | Step limit | 100 | Max steps per episode |
 | Command timeout | 300s | Per-command timeout |
 
@@ -464,11 +485,11 @@ Key hyperparameters (see `configs/training_config.yaml` for full reference):
 
 | Model | Training VRAM | Inference VRAM | Total (approx) |
 |-------|--------------|----------------|-----------------|
-| Qwen3-4B | ~16GB | ~8GB | ~24GB |
-| Qwen3-8B | ~32GB | ~16GB | ~48GB |
-| Qwen3-14B | ~48GB | ~24GB | ~72GB |
+| Qwen3-4B | ~16GB | ~8GB | ~24GB (RTX 4090) |
+| Qwen3-8B | ~32GB | ~16GB | ~48GB (A100 80GB) |
+| Qwen3-14B | ~48GB | ~24GB | ~72GB (H100 80GB) |
 
-Single GPU is sufficient. For Qwen3-4B, an A100 40GB or any GPU with 24GB+ works.
+Single GPU is sufficient. Recommended: H200 (140GB) or H100 (80GB) for comfortable headroom.
 
 ---
 
@@ -480,16 +501,19 @@ Single GPU is sufficient. For Qwen3-4B, an A100 40GB or any GPU with 24GB+ works
 # Reduce batch size
 python train.py --batch-size 2 --gradient-accumulation 8
 
-# Or reduce vLLM memory (edit TrainingConfig in train.py)
-# vllm_gpu_memory_utilization: 0.4
+# Or reduce vLLM context / memory
+python train.py --max-model-len 8192 --gpu-memory-utilization 0.6
 ```
+
+> On smaller GPUs (RTX 4090 24GB), you may need `--max-model-len 8192` and `--gpu-memory-utilization 0.6`.
+> On H200/H100, the defaults (32768 / 0.9) work fine.
 
 ### ImportError: No module named 'affinetes'
 
 Make sure affinetes is installed:
 
 ```bash
-cd ~/rl/affinetes
+cd ~/agent-rl-train/affinetes
 pip install -e .
 ```
 
@@ -501,12 +525,26 @@ newgrp docker
 # Or: sudo chmod 666 /var/run/docker.sock
 ```
 
+### Docker: `unsupported shim version (3)`
+
+Common on cloud/rental VPS with older containerd. Fix:
+
+```bash
+# Update containerd
+sudo apt install -y containerd.io
+sudo systemctl restart containerd && sudo systemctl restart docker
+
+# Or force shim v2
+sudo sed -i 's/io.containerd.runc.v3/io.containerd.runc.v2/g' /etc/docker/daemon.json
+sudo systemctl restart docker
+```
+
 ### SWE-SYNTH Environment Not Found
 
 The SWE-SYNTH directory uses a dash (`SWE-SYNTH`), not underscore. The wrapper handles this automatically. Ensure the affinetes project structure is intact:
 
 ```bash
-ls ~/rl/affinetes/environments/SWE-SYNTH/env.py
+ls ~/agent-rl-train/affinetes/environments/SWE-SYNTH/env.py
 ```
 
 ### ART Not Available

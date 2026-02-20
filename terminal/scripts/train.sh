@@ -15,7 +15,7 @@ fi
 
 # Default values
 ENV_TYPE="swe-synth"
-MODEL="Qwen/Qwen3-4B-Instruct"
+MODEL="glowsenior/affine-senior-5GZQjTBnzFnNnKNbVry2hS29CzNa4EkovYAAsdvg3cDA7ssN"
 OFFLINE_DATA=""
 ONLINE_STEPS=2000
 OFFLINE_STEPS=500
@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --env-type TYPE      Environment type: swe-synth or liveweb (default: swe-synth)"
-            echo "  --model MODEL        Base model (default: Qwen/Qwen3-4B-Instruct)"
+            echo "  --model MODEL        Base model (default: glowsenior/affine-senior-5GZQjTBnzFnNnKNbVry2hS29CzNa4EkovYAAsdvg3cDA7ssN)"
             echo "  --offline-data PATH  Path to offline data for warm-start"
             echo "  --online-steps N     Number of online training steps (default: 2000)"
             echo "  --offline-steps N    Number of offline training steps (default: 500)"

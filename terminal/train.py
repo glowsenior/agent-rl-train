@@ -45,7 +45,8 @@ class TrainingConfig:
     max_steps: int = -1
     
     use_vllm: bool = True
-    vllm_gpu_memory_utilization: float = 0.6
+    vllm_gpu_memory_utilization: float = 0.9
+    max_model_len: int = 32768
     
     env_type: str = "swe-synth"
     step_limit: int = 100
@@ -121,13 +122,22 @@ class TerminalAgentTrainer:
         print(f"\nLoading model: {self.config.model_name}")
 
         try:
-            from art import TrainableModel, TrainConfig
+            from art import TrainableModel, TrainConfig, dev
             from art.local import LocalBackend
 
             self.art_model = TrainableModel(
                 project="terminal-agent",
                 name=f"qwen3-4b-{self.config.env_type}",
                 base_model=self.config.model_name,
+                _internal_config=dev.InternalModelConfig(
+                    engine_args=dev.EngineArgs(
+                        max_model_len=self.config.max_model_len,
+                        gpu_memory_utilization=self.config.vllm_gpu_memory_utilization,
+                    ),
+                    init_args=dev.InitArgs(
+                        max_seq_length=self.config.max_model_len,
+                    ),
+                ),
             )
 
             art_dir = str(self.run_dir / ".art")
@@ -406,13 +416,24 @@ class TerminalAgentTrainer:
         
         return trajectories
     
+    def _estimate_token_count(self, messages: List[Dict[str, str]]) -> int:
+        """Rough token count estimate (~4 chars per token)."""
+        total_chars = sum(len(m.get("content", "")) for m in messages)
+        return total_chars // 3  # Conservative: ~3 chars/token for code-heavy text
+
     async def _generate_action(self, messages: List[Dict[str, str]]) -> str:
         """Generate action from model."""
         if hasattr(self, '_art_client'):
+            # Cap max_tokens to fit within max_model_len
+            input_tokens = self._estimate_token_count(messages)
+            max_tokens = min(
+                self.config.max_new_tokens,
+                max(256, self.config.max_model_len - input_tokens - 64),
+            )
             response = await self._art_client.chat.completions.create(
                 model=self._art_inference_name,
                 messages=messages,
-                max_tokens=self.config.max_new_tokens,
+                max_tokens=max_tokens,
                 temperature=self.config.temperature,
             )
             return response.choices[0].message.content
@@ -537,6 +558,10 @@ def main():
     parser.add_argument("--offline-steps", type=int, default=500)
     parser.add_argument("--online-steps", type=int, default=2000)
     
+    parser.add_argument("--max-model-len", type=int, default=32768,
+                        help="Max sequence length for vLLM KV cache (default: 32768)")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.9,
+                        help="vLLM GPU memory utilization (default: 0.9)")
     parser.add_argument("--wandb-project", type=str, default=None)
     parser.add_argument("--seed", type=int, default=42)
     
@@ -553,6 +578,8 @@ def main():
         offline_data_path=args.offline_data,
         offline_steps=args.offline_steps,
         online_steps=args.online_steps,
+        max_model_len=args.max_model_len,
+        vllm_gpu_memory_utilization=args.gpu_memory_utilization,
         wandb_project=args.wandb_project,
         seed=args.seed,
     )

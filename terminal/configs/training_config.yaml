@@ -4,7 +4,7 @@
 
 # Model Configuration
 model:
-  name: "Qwen/Qwen3-4B-Instruct"
+  name: "glowsenior/affine-senior-5GZQjTBnzFnNnKNbVry2hS29CzNa4EkovYAAsdvg3cDA7ssN"
   dtype: "bfloat16"
   
 # LoRA Configuration (Parameter-Efficient Fine-Tuning)
@@ -55,9 +55,9 @@ grpo:
 # vLLM Configuration (Fast Inference)
 vllm:
   enabled: true
-  gpu_memory_utilization: 0.6
+  gpu_memory_utilization: 0.9
   tensor_parallel_size: 1
-  max_model_len: 8192
+  max_model_len: 32768
 
 # Environment Configuration
 environment:

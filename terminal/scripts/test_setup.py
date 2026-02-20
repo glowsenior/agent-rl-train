@@ -161,7 +161,7 @@ def test_model_loading():
             print(f"  GPU: {torch.cuda.get_device_name(0)}")
         
         from transformers import AutoTokenizer
-        tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B-Instruct")
+        tokenizer = AutoTokenizer.from_pretrained("glowsenior/affine-senior-5GZQjTBnzFnNnKNbVry2hS29CzNa4EkovYAAsdvg3cDA7ssN")
         print(f"  ✓ Tokenizer loaded (vocab size: {len(tokenizer)})")
         return True
         

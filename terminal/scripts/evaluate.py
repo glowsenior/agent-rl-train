@@ -120,7 +120,7 @@ class AgentEvaluator:
             )
             print("✓ Loaded full model")
         except Exception:
-            base_model = "Qwen/Qwen3-4B-Instruct"
+            base_model = "glowsenior/affine-senior-5GZQjTBnzFnNnKNbVry2hS29CzNa4EkovYAAsdvg3cDA7ssN"
             print(f"Loading base model {base_model} and adapter...")
             
             self.model = AutoModelForCausalLM.from_pretrained(

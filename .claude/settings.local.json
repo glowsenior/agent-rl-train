@@ -6,7 +6,9 @@
       "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && cat {}')",
       "WebFetch(domain:art.openpipe.ai)",
       "WebFetch(domain:pypi.org)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh api:*)"
     ]
   }
 }
