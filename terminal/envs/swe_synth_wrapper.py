@@ -15,7 +15,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from affinetes.core.openenv import OpenEnvResponse
+try:
+    from affinetes.core.openenv import OpenEnvResponse
+except ImportError:
+    OpenEnvResponse = None
+
 from envs.art_wrapper import BaseTerminalEnv, StepResult
 
 SYSTEM_PROMPT = """You are a helpful assistant that can interact multiple times with a computer shell to solve programming tasks.
@@ -81,7 +85,22 @@ class SWESynthEnv(BaseTerminalEnv):
     def _get_actor(self):
         """Lazy initialization of the SynthActor."""
         if self._actor is None:
-            from affinetes.environments.SWE_SYNTH import SynthActor
+            import importlib
+            affinetes_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            swe_synth_dir = os.path.join(affinetes_root, "affinetes", "environments", "SWE-SYNTH")
+            if os.path.isdir(swe_synth_dir):
+                sys.path.insert(0, swe_synth_dir)
+                from env import SynthActor
+            else:
+                # Fallback: try underscore variant or package import
+                try:
+                    mod = importlib.import_module("affinetes.environments.SWE_SYNTH")
+                    SynthActor = mod.SynthActor
+                except ImportError:
+                    raise ImportError(
+                        f"Cannot find SWE-SYNTH environment. "
+                        f"Searched: {swe_synth_dir} and affinetes.environments.SWE_SYNTH"
+                    )
             self._actor = SynthActor(
                 api_key=self.api_key,
                 cache_dir=self.cache_dir,
@@ -107,15 +126,17 @@ class SWESynthEnv(BaseTerminalEnv):
         
         actor = self._get_actor()
         resolved_seed = seed if seed is not None else random.randint(0, 2**32 - 1)
-        episode_id = uuid.uuid4().hex
-        
+
         result = await actor.reset(
             task_id=task_id,
             seed=resolved_seed,
             step_limit=step_limit,
             command_timeout=command_timeout,
         )
-        
+
+        # Use the actor's episode_id, not a self-generated one
+        episode_id = result.episode_id or uuid.uuid4().hex
+
         state = EpisodeState(
             episode_id=episode_id,
             task_id=task_id,
@@ -141,10 +162,8 @@ class SWESynthEnv(BaseTerminalEnv):
         
         if result.info.get("error"):
             info["error"] = result.info["error"]
-        
-        full_observation = f"{SYSTEM_PROMPT}\n\n{result.observation}"
-        
-        return full_observation, info
+
+        return result.observation, info
     
     async def step(self, action: str, episode_id: Optional[str] = None) -> StepResult:
         """

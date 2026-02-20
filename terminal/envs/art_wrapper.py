@@ -31,7 +31,13 @@ class BaseTerminalEnv(ABC):
     """Base class for terminal agent environments."""
     
     @abstractmethod
-    async def reset(self, task_id: int, seed: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
+    async def reset(
+        self,
+        task_id: int,
+        seed: Optional[int] = None,
+        step_limit: int = 100,
+        command_timeout: int = 300,
+    ) -> Tuple[str, Dict[str, Any]]:
         """Reset environment and return initial observation."""
         pass
     

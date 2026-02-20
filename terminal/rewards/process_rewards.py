@@ -123,12 +123,14 @@ class ProcessRewardCalculator:
         
         if self._is_no_op(action, observation):
             reward += self.config.no_op_penalty
-        
+
+        # Clamp step-level rewards only; final reward is added unclamped
+        reward = max(min(reward, self.config.max_step_reward), self.config.min_step_reward)
+
         if done:
-            final_reward = self._compute_final_reward(info)
-            reward += final_reward
-        
-        return max(min(reward, self.config.max_step_reward), self.config.min_step_reward)
+            reward += self._compute_final_reward(info)
+
+        return reward
     
     def compute_trajectory_reward(
         self,
@@ -170,27 +172,25 @@ class ProcessRewardCalculator:
         return total_reward, stats
     
     def _is_invalid_format(self, action: str) -> bool:
-        """Check if action has invalid format."""
+        """Check if action has invalid format (bash or json code block)."""
         if not action or not action.strip():
             return True
-        
-        if "```bash" not in action and "```json" not in action:
+
+        bash_matches = re.findall(r"```bash\s*\n(.*?)\n```", action, re.DOTALL)
+        json_matches = re.findall(r"```json\s*\n(.*?)\n```", action, re.DOTALL)
+
+        total = len(bash_matches) + len(json_matches)
+
+        # Must have exactly one code block (either bash or json)
+        if total == 0:
             return True
-        
-        bash_pattern = r"```bash\s*\n(.*?)\n```"
-        matches = re.findall(bash_pattern, action, re.DOTALL)
-        
-        if len(matches) == 0:
+        if total > 1:
             return True
-        
-        if len(matches) > 1:
-            return True
-        
+
         return False
     
     def _has_code_changes(self, observation: str) -> bool:
         """Detect if code was modified."""
-        obs_lower = observation.lower()
         for pattern in self._code_patterns:
             if re.search(pattern, observation, re.IGNORECASE):
                 return True

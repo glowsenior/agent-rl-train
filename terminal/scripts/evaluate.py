@@ -119,7 +119,7 @@ class AgentEvaluator:
                 device_map="auto",
             )
             print("✓ Loaded full model")
-        except:
+        except Exception:
             base_model = "Qwen/Qwen3-4B-Instruct"
             print(f"Loading base model {base_model} and adapter...")
             
@@ -356,13 +356,13 @@ def compare_models(
         evaluator.cleanup()
     
     comparison_file = Path(output_dir) / "comparison.json"
+    # Use a standalone helper to compute summaries (stateless)
+    helper = AgentEvaluator.__new__(AgentEvaluator)
     with open(comparison_file, "w") as f:
         json.dump({
             "models": {
-                path: {
-                    "summary": evaluator._compute_summary(results)
-                    for path, results in all_results.items()
-                }
+                path: helper._compute_summary(results)
+                for path, results in all_results.items()
             }
         }, f, indent=2)
     

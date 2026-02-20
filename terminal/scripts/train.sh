@@ -4,6 +4,15 @@
 
 set -e
 
+# Load .env file if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+if [ -f "$PROJECT_DIR/.env" ]; then
+    set -a
+    source "$PROJECT_DIR/.env"
+    set +a
+fi
+
 # Default values
 ENV_TYPE="swe-synth"
 MODEL="Qwen/Qwen3-4B-Instruct"
@@ -124,4 +133,4 @@ fi
 # Run training
 echo "Starting training..."
 echo ""
-exec $CMD
+eval "$CMD"

@@ -119,38 +119,33 @@ class TerminalAgentTrainer:
     def _setup_model(self):
         """Initialize model and tokenizer."""
         print(f"\nLoading model: {self.config.model_name}")
-        
+
         try:
-            from art import TrainableModel, LocalBackend
-            from art import TrainConfig as ARTTrainConfig
-            
+            from art import TrainableModel, TrainConfig
+            from art.local import LocalBackend
+
             self.art_model = TrainableModel(
                 project="terminal-agent",
                 name=f"qwen3-4b-{self.config.env_type}",
                 base_model=self.config.model_name,
             )
-            
-            backend = LocalBackend(
-                device=self.device,
-                vllm_gpu_memory_utilization=self.config.vllm_gpu_memory_utilization,
+
+            art_dir = str(self.run_dir / ".art")
+            backend = LocalBackend(in_process=False, path=art_dir)
+            asyncio.get_event_loop().run_until_complete(
+                self.art_model.register(backend)
             )
-            self.art_model.register(backend)
-            
-            self.art_config = ARTTrainConfig(
-                lora_rank=self.config.lora_rank,
-                lora_alpha=self.config.lora_alpha,
-                lora_dropout=self.config.lora_dropout,
-                per_device_train_batch_size=self.config.per_device_train_batch_size,
-                gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-                num_generations=self.config.num_generations,
-                temperature=self.config.temperature,
-                max_new_tokens=self.config.max_new_tokens,
+
+            self.art_config = TrainConfig(
                 learning_rate=self.config.learning_rate,
-                use_vllm=self.config.use_vllm,
             )
-            
+
+            # Store an OpenAI-compatible client for generation
+            self._art_client = self.art_model.openai_client()
+            self._art_inference_name = self.art_model.get_inference_name()
+
             print("✓ ART model initialized")
-            
+
         except ImportError:
             print("ART not available, using TRL fallback...")
             self._setup_trl_model()
@@ -262,23 +257,22 @@ class TerminalAgentTrainer:
     def _train_offline_art(self, batch):
         """Train offline phase with ART."""
         trajectories = [t.to_dict() for t in batch.trajectories]
-        
+
         for epoch in range(self.config.num_train_epochs):
             self.logger.info(f"Offline epoch {epoch + 1}/{self.config.num_train_epochs}")
-            
+
             for i in range(0, len(trajectories), self.config.per_device_train_batch_size):
                 batch_trajectories = trajectories[i:i + self.config.per_device_train_batch_size]
-                
-                self.art_model.train_step(
-                    trajectories=batch_trajectories,
-                    config=self.art_config,
+
+                asyncio.get_event_loop().run_until_complete(
+                    self.art_model.train(batch_trajectories, config=self.art_config)
                 )
-                
+
                 self.global_step += 1
-                
+
                 if self.global_step % self.config.log_interval == 0:
                     self.logger.info(f"Offline step {self.global_step}")
-                
+
                 if self.global_step % self.config.save_interval == 0:
                     self._save_checkpoint()
     
@@ -414,9 +408,14 @@ class TerminalAgentTrainer:
     
     async def _generate_action(self, messages: List[Dict[str, str]]) -> str:
         """Generate action from model."""
-        if hasattr(self, 'art_model'):
-            response = self.art_model.generate(messages)
-            return response
+        if hasattr(self, '_art_client'):
+            response = await self._art_client.chat.completions.create(
+                model=self._art_inference_name,
+                messages=messages,
+                max_tokens=self.config.max_new_tokens,
+                temperature=self.config.temperature,
+            )
+            return response.choices[0].message.content
         else:
             prompt = self.tokenizer.apply_chat_template(
                 messages,
@@ -438,9 +437,8 @@ class TerminalAgentTrainer:
     
     def _train_step_art(self, trajectories: List[Dict[str, Any]]):
         """Train step with ART."""
-        self.art_model.train_step(
-            trajectories=trajectories,
-            config=self.art_config,
+        asyncio.get_event_loop().run_until_complete(
+            self.art_model.train(trajectories, config=self.art_config)
         )
         self.logger.info(f"Trained on {len(trajectories)} trajectories")
     
@@ -499,14 +497,19 @@ class TerminalAgentTrainer:
         """Save model checkpoint."""
         checkpoint_name = "best_checkpoint" if best else f"checkpoint_{self.global_step}"
         checkpoint_dir = self.run_dir / checkpoint_name
-        
+
         if hasattr(self, 'art_model'):
-            self.art_model.save(checkpoint_dir)
+            # ART manages checkpoints via the backend; export adapter weights
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            step = self.art_model.get_step()
+            meta = {"global_step": self.global_step, "art_step": step, "best": best}
+            with open(checkpoint_dir / "meta.json", "w") as f:
+                json.dump(meta, f, indent=2)
+            self.logger.info(f"ART checkpoint meta saved to {checkpoint_dir} (art_step={step})")
         else:
             self.model.save_pretrained(checkpoint_dir)
             self.tokenizer.save_pretrained(checkpoint_dir)
-        
-        self.logger.info(f"Saved checkpoint to {checkpoint_dir}")
+            self.logger.info(f"Saved checkpoint to {checkpoint_dir}")
     
     def cleanup(self):
         """Cleanup resources."""
@@ -523,7 +526,7 @@ def main():
     
     parser.add_argument("--model-name", type=str, default="RepoMax/Affine-18g-5Dr639TubpvhrbJGSKnCzKakCqHPr9gHze5sSWcgh66AaYGj")
     parser.add_argument("--output-dir", type=str, default="./checkpoints")
-    parser.add_argument("--env-type", type=str, default="swe-synth", choices=["swe-synth"])
+    parser.add_argument("--env-type", type=str, default="swe-synth", choices=["swe-synth", "liveweb"])
     
     parser.add_argument("--lora-rank", type=int, default=64)
     parser.add_argument("--learning-rate", type=float, default=5e-7)

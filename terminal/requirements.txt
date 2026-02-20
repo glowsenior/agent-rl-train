@@ -12,8 +12,8 @@ trl>=0.15.0
 vllm>=0.6.0
 
 # ART (OpenPipe Agent Reinforcement Trainer)
-# Install with: pip install art-openpipe
-openpipe-art>=0.5.0
+# Install with: pip install "openpipe-art[backend]"
+openpipe-art[backend]
 
 # Data processing
 datasets>=2.18.0

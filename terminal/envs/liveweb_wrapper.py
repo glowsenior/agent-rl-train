@@ -159,9 +159,7 @@ class LiveWebEnv(BaseTerminalEnv):
             "task_name": task_info.get("task_name"),
         }
         
-        full_observation = f"{LIVEWEB_SYSTEM_PROMPT}\n\n{observation}"
-        
-        return full_observation, info
+        return observation, info
     
     async def step(self, action: str, episode_id: Optional[str] = None) -> StepResult:
         """
