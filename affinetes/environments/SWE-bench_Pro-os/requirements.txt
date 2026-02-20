@@ -1,0 +1,5 @@
+datasets
+pyyaml
+litellm
+docker
+mini-swe-agent

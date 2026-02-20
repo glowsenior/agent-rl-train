@@ -1,0 +1,6 @@
+# Core dependencies
+datasets
+httpx
+openai
+pydantic
+psutil

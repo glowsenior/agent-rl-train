@@ -1,0 +1,157 @@
+# Terminal Agent ART Training Configuration
+# ===========================================
+# This file contains all training hyperparameters and settings.
+
+# Model Configuration
+model:
+  name: "Qwen/Qwen3-4B-Instruct"
+  dtype: "bfloat16"
+  
+# LoRA Configuration (Parameter-Efficient Fine-Tuning)
+lora:
+  rank: 64
+  alpha: 64
+  dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+    - "k_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+# Training Configuration
+training:
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  effective_batch_size: 16
+  
+  learning_rate: 5.0e-7
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  
+  num_train_epochs: 3
+  max_steps: -1
+  
+  gradient_checkpointing: true
+  fp16: false
+  bf16: true
+
+# GRPO Configuration (Online RL)
+grpo:
+  num_generations: 16
+  temperature: 0.7
+  top_p: 0.9
+  max_new_tokens: 4096
+  
+  kl_coef: 0.001
+  clip_range: 0.2
+  
+  # Advantage normalization
+  advantage_mean: true
+  advantage_std: true
+
+# vLLM Configuration (Fast Inference)
+vllm:
+  enabled: true
+  gpu_memory_utilization: 0.6
+  tensor_parallel_size: 1
+  max_model_len: 8192
+
+# Environment Configuration
+environment:
+  type: "swe-synth"  # or "liveweb"
+  
+  swe_synth:
+    step_limit: 100
+    command_timeout: 300
+    dockerhub_username: "jefzda"
+    cache_dir: "/tmp/swe-synth-cache"
+  
+  liveweb:
+    step_limit: 50
+    command_timeout: 300
+    headless: true
+
+# Reward Configuration (Process Rewards)
+rewards:
+  valid_command: 0.01
+  command_success: 0.02
+  code_modified: 0.03
+  test_discovered: 0.02
+  error_found: 0.01
+  invalid_format: -0.05
+  timeout_penalty: -0.02
+  no_op_penalty: -0.01
+  
+  final_success: 1.0
+  final_partial_multiplier: 0.5
+  
+  max_step_reward: 0.1
+  min_step_reward: -0.1
+
+# Hybrid Training Configuration
+hybrid:
+  # Offline phase (warm-start)
+  offline:
+    enabled: true
+    data_path: null  # Set to path of pre-generated samples
+    steps: 500
+    learning_rate_multiplier: 1.0
+  
+  # Online phase (GRPO)
+  online:
+    enabled: true
+    steps: 2000
+    eval_interval: 100
+    eval_episodes: 10
+
+# Logging Configuration
+logging:
+  log_interval: 10
+  save_interval: 500
+  eval_interval: 100
+  
+  wandb:
+    enabled: false
+    project: "terminal-agent"
+    entity: null
+    
+  tensorboard:
+    enabled: true
+    log_dir: "./logs"
+
+# Checkpoint Configuration
+checkpoint:
+  output_dir: "./checkpoints"
+  save_total_limit: 5
+  save_strategy: "steps"
+  save_steps: 500
+  
+  # Load from checkpoint
+  resume_from_checkpoint: null
+
+# Task Distribution
+tasks:
+  # Training task IDs
+  train_task_ids: [1, 100]  # Range: start, end
+  
+  # Evaluation task IDs
+  eval_task_ids: [101, 110]
+  
+  # Task sampling
+  sampling_strategy: "uniform"  # uniform, difficulty_weighted
+  
+  # Difficulty weights (optional)
+  difficulty_weights: null
+
+# System Configuration
+system:
+  seed: 42
+  num_workers: 4
+  pin_memory: true
+  
+  # GPU selection
+  device: "cuda"
+  device_map: "auto"

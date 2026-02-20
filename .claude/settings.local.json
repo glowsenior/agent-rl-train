@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && head -20 {}')",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && cat {}')",
+      "WebFetch(domain:art.openpipe.ai)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
