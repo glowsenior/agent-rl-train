@@ -579,3 +579,43 @@ This is fine for initial experiments. ART provides better RL training but TRL wo
 ## License
 
 MIT
+
+
+
+
+## Notice
+
+### If this case
+ImportError: /tmp/torchinductor_root/triton/0/FGEG2MUR2S4MQL2QKR7OIDGLUIFNWXAP2Y4RFVGFIWG7KQVMDQFQ/__triton_launcher.cpython-312-x86_64-linux-gnu.so: failed to map segment from shared object
+
+
+This is a well-known issue: /tmp is mounted with noexec on this VPS, which prevents Triton (used by torch.compile/vLLM) from loading JIT-compiled shared objects from /tmp.
+
+The solution is to either remount /tmp with exec permissions or redirect the cache directories to a location that allows execution. I can set environment variables like TRITON_CACHE_DIR, TORCH_COMPILE_CACHE_DIR, or TMPDIR to point to a directory with proper permissions instead.
+
+This is not a code issue — it's a VPS configuration problem. The key error is:
+
+
+ImportError: .../__triton_launcher.cpython-312-x86_64-linux-gnu.so: failed to map segment from shared object
+Cause: /tmp is mounted with noexec on this VPS (common security hardening on cloud/rental machines). Triton and torch.compile JIT-compile kernels into /tmp and need to execute them as shared libraries, which noexec blocks.
+
+Fix (run on VPS, no file edits needed):
+
+
+# Option 1 (quickest): Remount /tmp with exec permission
+sudo mount -o remount,exec /tmp
+
+# Then retry training
+python train.py --env-type swe-synth --online-steps 2000
+If you don't have sudo or it doesn't stick after reboot:
+
+
+# Option 2: Redirect temp/cache to a directory with exec
+mkdir -p /root/tmp /root/.cache/triton
+export TMPDIR=/root/tmp
+export TRITON_CACHE_DIR=/root/.cache/triton
+export TORCHINDUCTOR_OUTPUT_DIR=/root/tmp
+
+# Then retry
+python train.py --max-model-len 40926 --env-type swe-synth --online-steps 2000
+You can also add those exports to your .env file so they persist.
